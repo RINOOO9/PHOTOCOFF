@@ -1,49 +1,155 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Camera, Trash2, RefreshCw, Film, Sparkles, Heart, Download } from 'lucide-react';
+import {
+  RotateCcw, Camera, Trash2, RefreshCw, Film, Sparkles, Heart,
+  Download, Play, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePhotography } from '../context/PhotographyContext';
+import {
+  FRAME_CONFIGS,
+  getFrameImagePath,
+  chromaKeyFrame,
+  composeCanvas,
+  composePlainCanvas,
+  generateGifVideo,
+  downloadDataUrl,
+  downloadBlobUrl,
+} from '../utils/frameUtils';
 
 const handleDownloadSingle = (dataUrl, name) => {
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  const timestamp = Date.now();
-  link.download = `${name}-${timestamp}.jpg`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadDataUrl(dataUrl, `${name}-${Date.now()}.jpg`);
 };
+
+const TABS = [
+  { id: 'live', label: 'Live Photo', icon: Play },
+  { id: 'photo', label: 'Photo', icon: ImageIcon },
+  { id: 'gif', label: 'GIF', icon: Film },
+];
 
 const Recap = () => {
   const navigate = useNavigate();
-  const { photos, deletedPhotos, retakenPhotos, resetAll } = usePhotography();
-  
-  // Slideshow state
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const {
+    photos, photoCount, frame, framePhotosMapping,
+    liveClips, deletedPhotos, retakenPhotos, resetAll,
+  } = usePhotography();
 
-  // Autoplay slideshow loop at rapid speed (450ms) for "Live Photo" loop
+  // Output preview state
+  const [activeTab, setActiveTab] = useState('live');
+  const [processedFrame, setProcessedFrame] = useState(null);
+  const [composedPhoto, setComposedPhoto] = useState(null);
+  const [gifIndex, setGifIndex] = useState(0);
+
+  // Save-all state
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | done | error
+  const [saveStep, setSaveStep] = useState('');
+  const [toast, setToast] = useState('');
+
+  const hasPhotos = photos && photos.length > 0;
+  const hasLive = liveClips && liveClips.length > 0;
+  const configs = FRAME_CONFIGS[frame] || FRAME_CONFIGS.frame3_1;
+
+  // Duplicated photos for frame slots (left+right)
+  const duplicatedPhotos = [];
+  for (let i = 0; i < photoCount; i++) {
+    const mi = framePhotosMapping?.[i] ?? i;
+    duplicatedPhotos.push(photos[mi]); duplicatedPhotos.push(photos[mi]);
+  }
+
+  // Process frame + compose framed photo once
   useEffect(() => {
-    if (photos.length <= 1) return;
-    
-    const interval = setInterval(() => {
-      setCurrentIndex((prevIndex) => (prevIndex + 1) % photos.length);
-    }, 450);
+    if (!hasPhotos) return;
+    let cancelled = false;
+    chromaKeyFrame(getFrameImagePath(frame)).then(async (keyed) => {
+      if (cancelled) return;
+      setProcessedFrame(keyed);
+      try {
+        const canvas = await composeCanvas(photos, photoCount, frame, framePhotosMapping, keyed);
+        if (!cancelled) setComposedPhoto(canvas.toDataURL('image/png', 1.0));
+      } catch {
+        /* preview photo optional */
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPhotos]);
 
-    return () => clearInterval(interval);
-  }, [photos]);
+  // GIF slideshow timer (plain photos, tanpa frame)
+  useEffect(() => {
+    if (activeTab !== 'gif' || !hasPhotos || photos.length <= 1) return;
+    const timer = setInterval(() => {
+      setGifIndex(prev => (prev + 1) % photos.length);
+    }, 700);
+    return () => clearInterval(timer);
+  }, [activeTab, hasPhotos, photos]);
 
-  const handleStartOver = () => {
-    resetAll();
-    navigate('/');
+  const getFrameImage = () => processedFrame || getFrameImagePath(frame);
+
+  const isLiveTab = activeTab === 'live';
+  const isPhotoTab = activeTab === 'photo';
+  const isGifTab = activeTab === 'gif';
+
+  const handleStartOver = () => { resetAll(); navigate('/'); };
+
+  // Unduh output Photo (frame) — dipakai tombol per-section & Save All
+  const downloadPhotoOutput = async () => {
+    let dataUrl = composedPhoto;
+    if (!dataUrl) {
+      const canvas = await composeCanvas(photos, photoCount, frame, framePhotosMapping, processedFrame);
+      dataUrl = canvas.toDataURL('image/png', 1.0);
+    }
+    downloadDataUrl(dataUrl, `photocoff-${Date.now()}.png`);
   };
 
-  // Safe checks if page accessed directly
-  const hasPhotos = photos && photos.length > 0;
+  // Unduh semua output ke galeri: Photo (frame) → GIF (video) → Live Photo (clips)
+  const handleSaveAll = async () => {
+    if (saveState === 'saving') return;
+    try {
+      setSaveState('saving');
+
+      setSaveStep('Photo');
+      await downloadPhotoOutput();
+      await new Promise(r => setTimeout(r, 600));
+
+      setSaveStep('GIF');
+      try {
+        const blob = await generateGifVideo(photos);
+        downloadBlobUrl(URL.createObjectURL(blob), `photocoff-gif-${Date.now()}.webm`);
+      } catch {
+        // Fallback: simpan tiap frame foto secara terpisah (kotak 4:3)
+        for (let i = 0; i < photos.length; i++) {
+          const canvas = await composePlainCanvas(photos[i], 1280, 960);
+          downloadDataUrl(canvas.toDataURL('image/png', 1.0), `photocoff-gif-frame-${i + 1}-${Date.now()}.png`);
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
+      await new Promise(r => setTimeout(r, 600));
+
+      setSaveStep('Live Photo');
+      if (hasLive) {
+        for (let i = 0; i < liveClips.length; i++) {
+          downloadBlobUrl(liveClips[i], `photocoff-live-${i + 1}-${Date.now()}.webm`);
+          await new Promise(r => setTimeout(r, 600));
+        }
+      }
+
+      setSaveState('done');
+      setToast('All outputs saved to your gallery!');
+      setTimeout(() => { setToast(''); setSaveState('idle'); }, 3000);
+    } catch (err) {
+      console.error('Save all error:', err);
+      setSaveState('error');
+      setToast('Something went wrong. Please try again.');
+      setTimeout(() => { setToast(''); setSaveState('idle'); }, 3000);
+    } finally {
+      setSaveStep('');
+    }
+  };
 
   // Combine deleted and retaken photos into unselected list
   const unselectedPhotos = [
     ...(deletedPhotos || []).map((p, i) => ({ src: p, label: `Deleted #${i + 1}`, type: 'deleted' })),
-    ...(retakenPhotos || []).map((p, i) => ({ src: p, label: `Retaken #${i + 1}`, type: 'retaken' }))
+    ...(retakenPhotos || []).map((p, i) => ({ src: p, label: `Retaken #${i + 1}`, type: 'retaken' })),
   ];
 
   return (
@@ -55,7 +161,7 @@ const Recap = () => {
       />
 
       <div className="max-w-4xl w-full space-y-8 sm:space-y-12 relative z-10">
-        
+
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -68,10 +174,10 @@ const Recap = () => {
             Session Complete
           </div>
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-bold text-wood tracking-tight">
-            Digital Recap & Memory
+            Digital Recap &amp; Memory
           </h1>
           <p className="text-wood/65 text-xs sm:text-sm max-w-md mx-auto font-sans leading-relaxed">
-            Your beautiful captured moments! Save your frame or download individual snaps below.
+            Save all your outputs — Live Photo, framed Photo, and GIF — straight to your gallery below.
           </p>
           <div className="h-[1px] w-12 bg-[#91545B]/30 mx-auto mt-4" />
         </motion.div>
@@ -89,7 +195,7 @@ const Recap = () => {
             <div className="space-y-2">
               <h2 className="text-2xl font-serif font-bold">No Photos Found</h2>
               <p className="text-sm text-wood/65 leading-relaxed font-sans">
-                It looks like you don't have any photos from this session yet. Let's take some beautiful shots!
+                It looks like you don&apos;t have any photos from this session yet. Let&apos;s take some beautiful shots!
               </p>
             </div>
             <motion.button
@@ -103,95 +209,179 @@ const Recap = () => {
             </motion.button>
           </motion.div>
         ) : (
-          /* Main Recap Layout */
           <div className="space-y-8 sm:space-y-12 max-w-2xl mx-auto w-full">
-            
-            {/* Top Section: Centered Live Photo Loop */}
+
+            {/* Save All to Gallery */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.05 }}
+              className="bg-[#30150E] text-white rounded-[24px] sm:rounded-[32px] p-5 sm:p-7 shadow-[0_20px_50px_rgba(48,21,14,0.2)] flex flex-col items-center text-center gap-4"
+            >
+              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
+                {saveState === 'saving' ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : saveState === 'done' ? (
+                  <CheckCircle2 className="w-6 h-6 text-green-400" />
+                ) : saveState === 'error' ? (
+                  <AlertCircle className="w-6 h-6 text-red-400" />
+                ) : (
+                  <Download className="w-6 h-6" />
+                )}
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-serif font-bold">Save All to Gallery</h2>
+                <p className="text-[10px] sm:text-xs text-white/60 mt-1 font-sans">
+                  1 framed photo + 1 GIF video {hasLive ? `+ ${liveClips.length} live clip${liveClips.length > 1 ? 's' : ''}` : ''} will be downloaded.
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: saveState === 'saving' ? 1 : 1.02 }}
+                whileTap={{ scale: saveState === 'saving' ? 1 : 0.98 }}
+                onClick={handleSaveAll}
+                className={`w-full max-w-xs py-3.5 rounded-full font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-lg flex items-center justify-center gap-2 font-sans transition-colors ${
+                  saveState === 'saving'
+                    ? 'bg-white/20 text-white/70 cursor-not-allowed'
+                    : 'bg-[#91545B] hover:bg-[#7a4249] text-white cursor-pointer'
+                }`}
+              >
+                {saveState === 'saving' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    SAVING {saveStep.toUpperCase()}...
+                  </>
+                ) : saveState === 'done' ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    ALL SAVED!
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    DOWNLOAD ALL OUTPUTS
+                  </>
+                )}
+              </motion.button>
+            </motion.div>
+
+            {/* Output Preview Panel (3 tabs) */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.1 }}
               className="bg-[#FAF0E6]/95 backdrop-blur-md rounded-[24px] sm:rounded-[32px] p-5 sm:p-7 border border-wood/10 shadow-[0_15px_35px_rgba(48,21,14,0.04)] flex flex-col items-center"
             >
-              <div className="w-full flex items-center justify-between pb-3 border-b border-wood/10 mb-6 sm:mb-8">
-                <div className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-[#91545B]" />
-                  <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-wood font-sans">
-                    Live Photo Loop
-                  </h3>
-                </div>
-                <span className="text-[9px] sm:text-[10px] bg-[#91545B] text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
-                  LIVE SNAP
-                </span>
+              {/* Tab switcher */}
+              <div className="flex bg-[#EFE6DC] rounded-full p-1 gap-1 mb-5">
+                {TABS.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  const disabled = tab.id === 'live' && !hasLive;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => !disabled && setActiveTab(tab.id)}
+                      disabled={disabled}
+                      className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.1em] transition-all cursor-pointer ${
+                        isActive ? 'bg-[#30150E] text-white shadow-md' : disabled ? 'text-wood/25 cursor-not-allowed' : 'text-wood/60 hover:text-wood hover:bg-white/50'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Simulated Polaroid Slideshow Frame with Tape and Bouncy Tilt */}
-              <div className="relative w-full max-w-[320px] mx-auto pb-4">
-                {/* Washi Tape decorative element */}
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-24 h-6 bg-[#F3A0AA]/50 border-x border-[#FAF0E6]/20 backdrop-blur-xs rotate-[-1.5deg] z-20 shadow-sm" />
-                
-                {/* Polaroid Frame */}
-                <motion.div 
-                  animate={{ rotate: [0.5, -0.5, 0.5] }}
-                  transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
-                  className="w-full bg-white p-3.5 pb-10 sm:p-4.5 sm:pb-14 shadow-[0_15px_35px_rgba(48,21,14,0.08)] rounded-[4px] border border-wood/5 flex flex-col gap-3 relative"
-                >
-                  <div className="relative aspect-[3/4] w-full bg-wood/5 overflow-hidden rounded-[2px]">
-                    <AnimatePresence mode="wait">
-                      <motion.img
-                        key={currentIndex}
-                        src={photos[currentIndex]}
-                        initial={{ opacity: 0.94 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0.94 }}
-                        transition={{ duration: 0.08 }} // Direct fast transition for rapid GIF feel!
-                        className="absolute inset-0 w-full h-full object-cover scale-x-[-1] grayscale-[0.03] contrast-[1.04]"
-                        alt="Live Photo Snap"
-                      />
-                    </AnimatePresence>
-                    
-                    {/* Glossy overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
-                  </div>
-                  
-                  {/* Polaroid Handwritten Caption */}
-                  <div className="text-center mt-1">
-                    <span className="font-serif italic text-wood/60 text-xs sm:text-sm tracking-widest flex items-center justify-center gap-1.5">
-                      <Heart className="w-3.5 h-3.5 fill-[#F3A0AA] text-[#91545B]" />
-                      photo live snap
-                    </span>
-                  </div>
-                </motion.div>
-              </div>
+              {/* Preview area */}
+              <div className={`relative w-full max-w-[360px] mx-auto ${isGifTab ? 'aspect-[4/3] max-w-[480px]' : 'aspect-[2/3]'} bg-wood/5 overflow-hidden rounded-lg shadow-inner`}>
+                {/* Live Photo: clips in their frame slots */}
+                {isLiveTab && configs.map((config, slotIndex) => {
+                  const clipIndex = Math.floor(slotIndex / 2);
+                  const clipSrc = hasLive && liveClips[clipIndex] ? liveClips[clipIndex] : null;
+                  if (!clipSrc) return null;
+                  return (
+                    <div
+                      key={slotIndex}
+                      style={{ position: 'absolute', top: config.top, left: config.left, width: config.width, height: config.height, zIndex: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <video src={clipSrc} className="w-full h-full object-cover" autoPlay loop muted playsInline preload="auto" />
+                    </div>
+                  );
+                })}
+                {isLiveTab && (
+                  <img src={getFrameImage()} className="absolute inset-0 w-full h-full object-fill" style={{ zIndex: 2 }} alt="Frame" />
+                )}
 
-              {/* Slideshow Progress Bar Indicators */}
-              <div className="flex gap-1 mt-3 justify-center mb-6">
-                {photos.map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`h-1.5 rounded-full transition-all duration-200 ${idx === currentIndex ? 'w-5 bg-[#91545B]' : 'w-1.5 bg-wood/15'}`}
+                {/* Photo: framed composition */}
+                {isPhotoTab && duplicatedPhotos.map((src, index) => {
+                  const config = configs[index];
+                  if (!src || !config) return null;
+                  return (
+                    <div
+                      key={index}
+                      style={{ position: 'absolute', top: config.top, left: config.left, width: config.width, height: config.height, zIndex: 1 }}
+                      className="overflow-hidden"
+                    >
+                      <img src={src} className="w-full h-full object-cover" alt={`Slot ${index + 1}`} />
+                    </div>
+                  );
+                })}
+                {isPhotoTab && (
+                  <img src={getFrameImage()} className="absolute inset-0 w-full h-full object-fill" style={{ zIndex: 2 }} alt="Frame" />
+                )}
+
+                {/* GIF: plain full-screen photo cycling */}
+                {isGifTab && photos[gifIndex] && (
+                  <img
+                    src={photos[gifIndex]}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    alt={`GIF ${gifIndex + 1}`}
                   />
-                ))}
+                )}
               </div>
 
-              {/* Centered Start New Session Button inside the loop panel */}
-              <div className="w-full pt-4 border-t border-wood/10 flex flex-col items-center space-y-3">
-                <p className="text-[10px] sm:text-xs text-[#725A54] leading-relaxed font-sans text-center">
-                  Finished saving your photos? Start a fresh session to capture more memories!
-                </p>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleStartOver}
-                  className="w-full max-w-xs py-3 bg-gradient-to-r from-[#91545B] to-[#530F0E] text-white rounded-full font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-[0_8px_20px_rgba(145,84,91,0.25)] flex items-center justify-center gap-2 cursor-pointer font-sans"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  START NEW SESSION
-                </motion.button>
+              {/* Per-output download button */}
+              <div className="w-full pt-5 mt-5 border-t border-wood/10 flex justify-center">
+                {isLiveTab && (
+                  <button
+                    onClick={() => {
+                      liveClips.forEach((clip, i) => {
+                        setTimeout(() => downloadBlobUrl(clip, `photocoff-live-${i + 1}-${Date.now()}.webm`), i * 600);
+                      });
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#30150E] text-white rounded-full font-bold uppercase tracking-widest text-[10px] cursor-pointer hover:bg-[#200e09] transition-colors font-sans"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download {liveClips.length} Live Clip{liveClips.length > 1 ? 's' : ''}
+                  </button>
+                )}
+                {isPhotoTab && (
+                  <button
+                    onClick={downloadPhotoOutput}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#30150E] text-white rounded-full font-bold uppercase tracking-widest text-[10px] cursor-pointer hover:bg-[#200e09] transition-colors font-sans"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Framed Photo
+                  </button>
+                )}
+                {isGifTab && (
+                  <button
+                    onClick={async () => {
+                      const blob = await generateGifVideo(photos);
+                      downloadBlobUrl(URL.createObjectURL(blob), `photocoff-gif-${Date.now()}.webm`);
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#30150E] text-white rounded-full font-bold uppercase tracking-widest text-[10px] cursor-pointer hover:bg-[#200e09] transition-colors font-sans"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download GIF (Video)
+                  </button>
+                )}
               </div>
             </motion.div>
 
-            {/* Middle Section: Selected Photos Gallery (with Download) */}
+            {/* Selected Photos Gallery (individual download) */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -220,7 +410,7 @@ const Recap = () => {
                         alt={`Selected ${index + 1}`}
                       />
                     </div>
-                    
+
                     {/* Action Panel */}
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[8px] sm:text-[9px] font-sans font-bold text-wood/40 uppercase tracking-widest">
@@ -228,7 +418,7 @@ const Recap = () => {
                       </span>
                       <button
                         onClick={() => handleDownloadSingle(src, `selected-${index + 1}`)}
-                        className="p-1 bg-[#FAF0E6] hover:bg-[#F3A0AA]/20 text-[#91545B] hover:text-[#7a4249] rounded-md transition-colors cursor-pointer animate-fadeIn"
+                        className="p-1 bg-[#FAF0E6] hover:bg-[#F3A0AA]/20 text-[#91545B] hover:text-[#7a4249] rounded-md transition-colors cursor-pointer"
                         title="Download Photo"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -239,7 +429,7 @@ const Recap = () => {
               </div>
             </motion.div>
 
-            {/* Bottom Section: Unselected Photos (Deleted & Retaken) */}
+            {/* Unselected Photos (Deleted & Retaken) */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -272,7 +462,7 @@ const Recap = () => {
                           className="w-full h-full object-cover scale-x-[-1] grayscale-[0.05]"
                           alt={item.label}
                         />
-                        
+
                         {/* Status Label Overlay */}
                         <div className="absolute top-2 left-2">
                           {item.type === 'deleted' ? (
@@ -307,9 +497,44 @@ const Recap = () => {
                 </div>
               )}
             </motion.div>
+
+            {/* Start New Session */}
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.35 }}
+              className="flex flex-col items-center space-y-3 pb-4"
+            >
+              <p className="text-[10px] sm:text-xs text-[#725A54] leading-relaxed font-sans text-center">
+                Finished saving your photos? Start a fresh session to capture more memories!
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleStartOver}
+                className="w-full max-w-xs py-3 bg-gradient-to-r from-[#91545B] to-[#530F0E] text-white rounded-full font-bold uppercase tracking-widest text-[10px] sm:text-xs shadow-[0_8px_20px_rgba(145,84,91,0.25)] flex items-center justify-center gap-2 cursor-pointer font-sans"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                START NEW SESSION
+              </motion.button>
+            </motion.div>
           </div>
         )}
       </div>
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 sm:bottom-8 z-[60] bg-[#30150E] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold tracking-widest uppercase shadow-xl flex items-center gap-2 border border-white/10"
+          >
+            <Heart className="w-3.5 h-3.5 fill-[#F3A0AA] text-[#F3A0AA]" /> {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

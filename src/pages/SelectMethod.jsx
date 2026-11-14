@@ -107,7 +107,7 @@ const SelectMethod = () => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    const maxAllowed = uploadPhotoCount || 6;
+    const maxAllowed = uploadPhotoCount || 3;
     const currentCount = uploadedFiles.length;
     const remaining = maxAllowed - currentCount;
     if (remaining <= 0) return;
@@ -296,13 +296,13 @@ const SelectMethod = () => {
                 </p>
               </motion.button>
 
-              {/* 6 Photos Card */}
+              {/* 4 Photos Card */}
               <motion.button
                 variants={cardVariants}
                 initial="initial"
                 whileHover="hover"
                 whileTap="tap"
-                onClick={() => handleSelectCount(6)}
+                onClick={() => handleSelectCount(4)}
                 className="relative flex flex-col items-center justify-center w-[240px] h-[270px] sm:w-[290px] sm:h-[320px] p-5 sm:p-6 bg-[#FAF0E6]/95 backdrop-blur-md rounded-[28px] sm:rounded-[32px] border-2 transition-colors duration-300 group shrink-0 cursor-pointer overflow-hidden"
               >
                 {/* Inner decorative dashed border */}
@@ -310,14 +310,14 @@ const SelectMethod = () => {
 
                 <SparkleSet offsets={{ delay: 0.3 }} />
 
-                {/* Icon circle with number 6 */}
+                {/* Icon circle with number 4 */}
                 <div className="w-[68px] h-[68px] sm:w-[84px] sm:h-[84px] rounded-full bg-[#F5E6D8]/60 border-2 border-[#E9DACB]/80 flex items-center justify-center mb-4 sm:mb-5 group-hover:bg-cashmere/10 group-hover:border-cashmere/60 transition-all duration-500 relative z-10 shadow-sm">
-                  <span className="font-serif text-2xl sm:text-3xl font-bold text-wood group-hover:scale-120 group-hover:rotate-12 transition-all duration-500 inline-block">6</span>
+                  <span className="font-serif text-2xl sm:text-3xl font-bold text-wood group-hover:scale-120 group-hover:rotate-12 transition-all duration-500 inline-block">4</span>
                 </div>
 
                 {/* Title */}
                 <h2 className="text-lg sm:text-xl font-bold text-wood mb-1 tracking-wide font-serif relative z-10">
-                  6 Photos
+                  4 Photos
                 </h2>
 
                 {/* Divider Line */}
@@ -326,8 +326,8 @@ const SelectMethod = () => {
                 {/* Description */}
                 <p className="text-[12px] sm:text-[13px] text-[#725A54] font-sans leading-relaxed max-w-[200px] sm:max-w-[210px] text-center relative z-10">
                   {selectedMethod === 'camera'
-                    ? 'Take 6 creative poses with a complete 2-column grid format.'
-                    : 'Import 6 photos for a complete 2-column grid format.'}
+                    ? 'Take 4 creative poses with a complete 2-column grid format.'
+                    : 'Import 4 photos for a complete 2-column grid format.'}
                 </p>
               </motion.button>
             </div>
@@ -360,7 +360,7 @@ const SelectMethod = () => {
             </div>
 
             {/* Slots Grid */}
-            <div className={`grid gap-3 sm:gap-4 w-full max-w-xl px-4 ${uploadPhotoCount === 6 ? 'grid-cols-3' : 'grid-cols-3'}`}>
+            <div className={`grid gap-3 sm:gap-4 w-full max-w-xl px-4 ${uploadPhotoCount === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
               {[...Array(uploadPhotoCount)].map((_, i) => (
                 <div
                   key={i}

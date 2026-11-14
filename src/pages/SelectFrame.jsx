@@ -1,14 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { usePhotography } from '../context/PhotographyContext';
 import { X, Check } from 'lucide-react';
 
+// Replace green pixels with white for preview thumbnails
+const chromaKeyToWhite = (src) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i+1], b = d[i+2];
+        if (g > 100 && g > r * 1.1 && g > b + 15) {
+          d[i] = 255; d[i+1] = 255; d[i+2] = 255;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+};
+
 const FRAMES = [
-  { id: 'rustic', name: 'Rustic Charm', desc: 'Warm tones and country textures.', image: '/frame_1.png', slots: 6 },
-  { id: 'romantic', name: 'Romantic Scrapbook', desc: 'Capturing love in every detail.', image: '/frame_2.png', slots: 6 },
-  { id: 'vintage', name: 'Vintage News', desc: 'Classic editorial newspaper style.', image: '/frame_3.png', slots: 3 },
-  { id: 'denim', name: 'Denim Creative', desc: 'Playful, textured denim layout.', image: '/frame_4.png', slots: 6 },
+  { id: 'frame3_1', name: 'Classic Strip', desc: 'Clean vertical strip layout.', image: '/frame3_1.png', slots: 3 },
+  { id: 'frame4_1', name: 'Grid Classic', desc: 'Four-photo grid layout.', image: '/frame4_1.png', slots: 4 },
 ];
 
 const SelectFrame = () => {
@@ -19,7 +44,7 @@ const SelectFrame = () => {
   const filteredFrames = FRAMES.filter(f => f.slots === photoCount);
   
   // Default selected frame dynamically chosen from filtered list
-  const defaultFrameId = filteredFrames.length > 0 ? filteredFrames[0].id : 'rustic';
+  const defaultFrameId = filteredFrames.length > 0 ? filteredFrames[0].id : 'frame3_1';
   const [selectedFrame, setSelectedFrame] = useState(
     frame && filteredFrames.some(f => f.id === frame) ? frame : defaultFrameId
   );
@@ -29,6 +54,16 @@ const SelectFrame = () => {
   
   // Mapping array: index maps to photo index.
   const [photoMapping, setPhotoMapping] = useState([]);
+
+  // Chroma key previews (green → white)
+  const [previewImages, setPreviewImages] = useState({});
+  useEffect(() => {
+    FRAMES.forEach(f => {
+      chromaKeyToWhite(f.image).then(dataUrl => {
+        setPreviewImages(prev => ({ ...prev, [f.id]: dataUrl }));
+      });
+    });
+  }, []);
 
   const handleSelect = (frameId) => {
     setSelectedFrame(frameId);
@@ -71,7 +106,9 @@ const SelectFrame = () => {
         <div className={`grid gap-3 sm:gap-4 md:gap-6 flex-1 min-h-0 ${
           filteredFrames.length === 1 
             ? 'grid-cols-1 max-w-[420px] mx-auto w-full' 
-            : 'grid-cols-1 sm:grid-cols-2 sm:grid-rows-2'
+            : filteredFrames.length === 2
+            ? 'grid-cols-1 sm:grid-cols-2'
+            : 'grid-cols-2 sm:grid-cols-3'
         }`}>
           {filteredFrames.map((frameData) => (
             <motion.div
@@ -89,7 +126,7 @@ const SelectFrame = () => {
                 }}
               >
                 <img 
-                  src={frameData.image} 
+                  src={previewImages[frameData.id] || frameData.image} 
                   alt={frameData.name}
                   className="absolute inset-0 w-full h-full object-contain p-2 sm:p-3"
                 />
@@ -152,7 +189,7 @@ const SelectFrame = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto min-h-0 px-1 sm:px-2">
-                <div className={`grid gap-3 sm:gap-4 ${photoCount === 6 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
+                <div className={`grid gap-3 sm:gap-4 ${photoCount === 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
                   {photoMapping.map((photoIndex, slotIndex) => (
                     <div key={slotIndex} className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 shadow-sm border border-wood/5 flex flex-col gap-2 sm:gap-3">
                       <div className="text-[9px] sm:text-[10px] font-bold tracking-widest text-wood/40 uppercase">Slot {slotIndex + 1}</div>

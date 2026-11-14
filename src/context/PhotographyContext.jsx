@@ -5,12 +5,13 @@ const PhotographyContext = createContext();
 
 export const PhotographyProvider = ({ children }) => {
   const [method, setMethod] = useState(null);
-  const [photoCount, setPhotoCount] = useState(6);
+  const [photoCount, setPhotoCount] = useState(3);
   const [photos, setPhotos] = useState([]);
   const [frame, setFrame] = useState(null);
   const [framePhotosMapping, setFramePhotosMapping] = useState({});
   const [deletedPhotos, setDeletedPhotos] = useState([]);
   const [retakenPhotos, setRetakenPhotos] = useState([]);
+  const [liveClips, setLiveClips] = useState([]);
 
   const addDeletedPhoto = (photoData) => {
     setDeletedPhotos(prev => [...prev, photoData]);
@@ -22,12 +23,13 @@ export const PhotographyProvider = ({ children }) => {
 
   const resetAll = () => {
     setMethod(null);
-    setPhotoCount(6);
+    setPhotoCount(3);
     setPhotos([]);
     setFrame(null);
     setFramePhotosMapping({});
     setDeletedPhotos([]);
     setRetakenPhotos([]);
+    setLiveClips([]);
   };
 
   return (
@@ -39,6 +41,7 @@ export const PhotographyProvider = ({ children }) => {
       framePhotosMapping, setFramePhotosMapping,
       deletedPhotos, addDeletedPhoto,
       retakenPhotos, addRetakenPhoto,
+      liveClips, setLiveClips,
       resetAll
     }}>
       {children}
