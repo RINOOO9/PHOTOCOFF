@@ -329,10 +329,10 @@ const Studio = () => {
 
           <div className="flex md:hidden gap-2 overflow-x-auto flex-1 min-h-0 pb-1">
             {[...Array(photoCount)].map((_, i) => (
-              <div key={i} className={`group flex-shrink-0 w-[68px] h-[68px] rounded-[10px] relative overflow-hidden transition-all ${photos[i] ? 'shadow-md ring-1 ring-wood/10' : 'bg-[#FFF9F6] border-2 border-dashed border-[#F3A0AA]/40'} flex items-center justify-center`}>
+              <div key={i} className={`group flex-shrink-0 w-[80px] h-[60px] rounded-[10px] relative overflow-hidden transition-all ${photos[i] ? 'shadow-md ring-1 ring-wood/10' : 'bg-[#FFF9F6] border-2 border-dashed border-[#F3A0AA]/40'} flex items-center justify-center`}>
                 {photos[i] ? (
                   <>
-                    <img src={photos[i]} className="w-full h-full object-contain bg-[#FFF9F6] absolute inset-0" alt={`Captured ${i + 1}`} />
+                    <img src={photos[i]} className="w-full h-full object-cover absolute inset-0" alt={`Captured ${i + 1}`} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 active:opacity-100 transition-opacity flex items-center justify-center">
                       <button
                         onClick={() => deletePhoto(i)}
@@ -354,12 +354,12 @@ const Studio = () => {
             ))}
           </div>
 
-          <div className={`hidden md:grid gap-3 flex-1 min-h-0 ${photoCount === 4 ? 'grid-cols-2 grid-rows-2 place-items-center' : 'grid-cols-1'}`}>
+          <div className={`hidden md:grid gap-3 flex-1 min-h-0 ${photoCount === 4 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-1 grid-rows-3'}`}>
             {[...Array(photoCount)].map((_, i) => (
-              <div key={i} className={`group min-h-0 w-full rounded-[16px] relative overflow-hidden transition-all ${photoCount === 4 ? 'aspect-square h-full max-h-full max-w-full' : ''} ${photos[i] ? 'shadow-md ring-1 ring-wood/10' : 'bg-[#FFF9F6] border-2 border-dashed border-[#F3A0AA]/40'} flex items-center justify-center`}>
+              <div key={i} className={`group min-h-0 w-full rounded-[16px] relative overflow-hidden transition-all ${photos[i] ? 'shadow-md ring-1 ring-wood/10' : 'bg-[#FFF9F6] border-2 border-dashed border-[#F3A0AA]/40'} flex items-center justify-center`}>
                 {photos[i] ? (
                   <>
-                    <img src={photos[i]} className={`absolute inset-0 ${photoCount === 4 ? 'w-full h-full object-contain bg-[#FFF9F6]' : 'w-full h-full object-cover'}`} alt={`Captured ${i + 1}`} />
+                    <img src={photos[i]} className="w-full h-full object-cover absolute inset-0" alt={`Captured ${i + 1}`} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <button
                         onClick={() => deletePhoto(i)}
