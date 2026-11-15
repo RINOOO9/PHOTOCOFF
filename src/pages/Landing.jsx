@@ -1,6 +1,12 @@
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import DriftWall from '../components/DriftWall';
+
+const HOME_BG_IMAGES = [1, 2, 3, 4, 5, 6].map((n) => ({
+  image: `/bghomepage_${n}.jpeg`,
+  title: `Background ${n}`
+}));
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -9,10 +15,22 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
-      {/* Background Image - fully visible */}
+      {/* Base background */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: "url('/bg_landingpage.png')" }}
+      />
+      {/* Drift Wall animation background (reactbits.dev/components/drift-wall) */}
+      <DriftWall
+        className="absolute inset-0 w-full h-full"
+        items={HOME_BG_IMAGES}
+        columns={8}
+        tileWidth={140}
+        tileHeight={220}
+        speed={30}
+        fade={0.08}
+        dim={0.5}
+        parallax={0}
       />
 
 
