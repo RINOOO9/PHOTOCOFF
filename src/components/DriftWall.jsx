@@ -19,7 +19,7 @@ const columnFactor = (index, variance) => {
 
 const DriftWall = ({
   items = DEFAULT_ITEMS,
-  columns = 5,
+  columns = 10,
   tileWidth = 200,
   tileHeight = 132,
   gap = 18,
