@@ -49,7 +49,7 @@
   display: block;
   border-radius: var(--dw-radius, 14px);
   overflow: hidden;
-  background: #1a1a2e;
+  background: #8b5454;
   opacity: var(--dw-dim, 0.5);
   transform: translateZ(0);
   pointer-events: none;
